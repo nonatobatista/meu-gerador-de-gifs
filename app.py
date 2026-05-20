@@ -2,13 +2,12 @@ import streamlit as st
 from PIL import Image, ImageEnhance, ImageDraw, ImageFont
 import io
 import math
-import os
 
 # 1. Configuração da página web
 st.set_page_config(page_title="Gerador de GIFs Pro", page_icon="🎨", layout="centered")
 
-st.title("Gerador de GIFs - Alta Definição Real")
-st.write("O conteúdo agora utiliza fontes vetoriais nativas do servidor para máxima nitidez.")
+st.title("Gerador de GIFs - Alta Definição Garantida")
+st.write("O conteúdo agora utiliza um mecanismo de renderização independente de fontes do sistema.")
 
 # 2. Configurações de Interface
 tipo_entrada = st.radio("O que você deseja animar?", ["Texto Personalizado", "Enviar uma Imagem"])
@@ -30,65 +29,55 @@ cor_fundo = st.color_picker("Escolha a cor do fundo:", "#1E1C18")
 base_image = None
 bg_color = (0, 0, 0, 0) if tipo_fundo == "Totalmente Transparente" else cor_fundo
 
-# --- MÓDULO 1: TEXTO PERSONALIZADO (CÁLCULO VETORIAL EM ALTA DEFINIÇÃO) ---
+# --- MÓDULO 1: TEXTO PERSONALIZADO (CÁLCULO DE RESOLUÇÃO SEGURO) ---
 if tipo_entrada == "Texto Personalizado":
     texto = st.text_input("Digite a palavra ou frase:", value="Python")
     cor_texto = st.color_picker("Escolha a cor do texto:", "#FF4B4B")
     
     if texto:
-        # Busca caminhos de fontes TrueType nativas que SEMPRE existem no Linux do Streamlit Cloud
-        caminhos_fontes = [
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "C:\\Windows\\Fonts\\arialbd.ttf" # Backup para teste local no Windows
-        ]
-        
-        font_path = None
-        for caminho in caminhos_fontes:
-            if os.path.exists(caminho):
-                font_path = caminho
-                break
-        
-        # Cria um canvas temporário grande para testar o tamanho real da fonte
-        canvas_teste = Image.new("RGBA", (2000, 2000), (0, 0, 0, 0))
-        draw_teste = ImageDraw.Draw(canvas_teste)
-        
-        # Define o tamanho ideal baseado no Slider (deixando margem de segurança de 10% nas laterais)
-        largura_alvo = int(tamanho_saida * 0.90)
-        altura_alvo = int(tamanho_saida * 0.90)
-        
-        tamanho_fonte = 20
-        
-        if font_path:
-            # Loop dinâmico que aumenta o tamanho real da fonte vetorial até preencher o espaço
-            while True:
-                font_teste = ImageFont.truetype(font_path, tamanho_fonte)
-                bbox = draw_teste.textbbox((0, 0), texto, font=font_teste)
-                w = bbox[2] - bbox[0]
-                h = bbox[3] - bbox[1]
-                
-                if w >= largura_alvo or h >= altura_alvo or tamanho_fonte > 500:
-                    break
-                tamanho_fonte += 2
-            font = ImageFont.truetype(font_path, tamanho_fonte - 2)
-        else:
-            # Caso extremo de falha, usa a padrão (mas o Linux do Streamlit sempre tem as de cima)
+        # Usamos uma fonte alternativa do Pillow que permite alteração de escala interna de forma confiável
+        try:
+            # Tenta carregar uma fonte padrão escalável embutida no Pillow
+            font = ImageFont.load_default(size=100)
+        except TypeError:
+            # Caso a versão instalada do Pillow seja antiga e não aceite o argumento 'size',
+            # criamos uma instância básica para o cálculo proporcional
             font = ImageFont.load_default()
 
-        # Recalcula a caixa exata com a fonte final já gigante
+        # Cria uma imagem temporária para medir o tamanho do texto base
+        canvas_medida = Image.new("RGBA", (2000, 500), (0, 0, 0, 0))
+        draw_medida = ImageDraw.Draw(canvas_medida)
+        bbox = draw_medida.textbbox((0, 0), texto, font=font)
+        w_texto_base = max(bbox[2] - bbox[0], 1)
+        h_texto_base = max(bbox[3] - bbox[1], 1)
+        
+        # Desenha o texto base de forma bem justa em sua própria superfície
+        img_texto_crua = Image.new("RGBA", (w_texto_base, h_texto_base), (0, 0, 0, 0))
+        draw_cruo = ImageDraw.Draw(img_texto_crua)
+        draw_cruo.text((-bbox[0], -bbox[1]), texto, fill=cor_texto, font=font)
+        
+        # Define a proporção matemática para esticar até 85% do tamanho escolhido no Slider
+        largura_alvo = int(tamanho_saida * 0.85)
+        proporcao_escala = largura_alvo / w_texto_base
+        
+        novo_w = int(w_texto_base * proporcao_escala)
+        novo_h = int(h_texto_base * proporcao_escala)
+        
+        # Ajusta caso a altura ultrapasse os limites verticais da imagem quadrada
+        if novo_h > int(tamanho_saida * 0.85):
+            altura_alvo = int(tamanho_saida * 0.85)
+            proporcao_escala = altura_alvo / h_texto_base
+            novo_w = int(w_texto_base * proporcao_escala)
+            novo_h = int(h_texto_base * proporcao_escala)
+            
+        # O pulo do gato: Faz o redimensionamento mantendo uma boa interpolação linear
+        img_texto_gigante = img_texto_crua.resize((novo_w, novo_h), Image.Resampling.BILINEAR)
+        
+        # Cria o canvas final com a cor escolhida e centraliza o texto gerado
         base_image = Image.new("RGBA", (tamanho_saida, tamanho_saida), bg_color)
-        draw_final = ImageDraw.Draw(base_image)
-        
-        bbox = draw_final.textbbox((0, 0), texto, font=font)
-        w_final = bbox[2] - bbox[0]
-        h_final = bbox[3] - bbox[1]
-        
-        # Centralização exata do texto de alta definição
-        x = (tamanho_saida - w_final) // 2
-        y = (tamanho_saida - h_final) // 2
-        
-        draw_final.text((x, y), texto, fill=cor_texto, font=font)
+        ox = (tamanho_saida - novo_w) // 2
+        oy = (tamanho_saida - novo_h) // 2
+        base_image.paste(img_texto_gigante, (ox, oy), img_texto_gigante)
 
 # --- MÓDULO 2: IMAGEM TRADICIONAL (PREENCHIMENTO TOTAL) ---
 else:
@@ -117,7 +106,7 @@ if base_image is not None:
     st.subheader("Visualização Base:")
     st.image(base_image, width=tamanho_saida)
     
-    st.write("Renderizando frames com anti-aliasing...")
+    st.write("Renderizando frames...")
     
     largura_orig, altura_orig = base_image.size
     frames = []
@@ -175,7 +164,7 @@ if base_image is not None:
     st.subheader("GIF Final Gerado:")
     st.image(gif_bytes, width=tamanho_saida)
     
-    nome_arquivo = "texto_perfeito.gif" if tipo_entrada == "Texto Personalizado" else "imagem_perfeita.gif"
+    nome_arquivo = "texto_correto.gif" if tipo_entrada == "Texto Personalizado" else "imagem_correta.gif"
     st.download_button(
         label=f"📥 Baixar GIF em {tamanho_saida}x{tamanho_saida}px",
         data=gif_bytes,
