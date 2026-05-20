@@ -6,8 +6,8 @@ import math
 # 1. Configuração da página web
 st.set_page_config(page_title="Gerador de GIFs Pro", page_icon="🎨", layout="centered")
 
-st.title("Definição Máxima Otimizada")
-st.write("Suba uma imagem ou digite um texto. O conteúdo foi forçado matematicamente a ocupar o tamanho máximo.")
+st.title("Gerador de GIFs - Alta Definição")
+st.write("Suba uma imagem ou digite um texto. O conteúdo agora possui renderização nítida anti-aliasing.")
 
 # 2. Configurações de Interface
 tipo_entrada = st.radio("O que você deseja animar?", ["Texto Personalizado", "Enviar uma Imagem"])
@@ -29,52 +29,56 @@ cor_fundo = st.color_picker("Escolha a cor do fundo:", "#1E1C18")
 base_image = None
 bg_color = (0, 0, 0, 0) if tipo_fundo == "Totalmente Transparente" else cor_fundo
 
-# --- MÓDULO 1: TEXTO PERSONALIZADO (PROJEÇÃO VETORIAL DA ESCALA) ---
+# --- MÓDULO 1: TEXTO PERSONALIZADO (SUPERSAMPLING EM ALTA DEFINIÇÃO) ---
 if tipo_entrada == "Texto Personalizado":
     texto = st.text_input("Digite a palavra ou frase:", value="Python")
     cor_texto = st.color_picker("Escolha a cor do texto:", "#FF4B4B")
     
     if texto:
-        # Passo A: Cria o texto em alta definição nativa da biblioteca
+        # Fator de superamostragem para renderizar o texto de forma nítida antes de aplicar efeitos
+        fator_hd = 4
+        tamanho_canvas_hd = tamanho_saida * fator_hd
+        
         font = ImageFont.load_default()
         
-        # Cria uma imagem temporária para medir o tamanho real em pixels do texto base
-        canvas_medida = Image.new("RGBA", (1000, 2000), (0,0,0,0))
+        # Cria uma imagem temporária para medir o tamanho da fonte padrão
+        canvas_medida = Image.new("RGBA", (1000, 1000), (0, 0, 0, 0))
         draw_medida = ImageDraw.Draw(canvas_medida)
         bbox = draw_medida.textbbox((0, 0), texto, font=font)
-        w_texto = bbox[2] - bbox[0]
-        h_texto = bbox[3] - bbox[1]
+        w_texto_base = max(bbox[2] - bbox[0], 1)
+        h_texto_base = max(bbox[3] - bbox[1], 1)
         
-        # Garante tamanho mínimo para evitar divisões por zero
-        w_texto = max(w_texto, 1)
-        h_texto = max(h_texto, 1)
-        
-        # Desenha o texto bem justo
-        img_texto_crua = Image.new("RGBA", (w_texto, h_texto), (0,0,0,0))
+        # Desenha o texto base de forma limpa
+        img_texto_crua = Image.new("RGBA", (w_texto_base, h_texto_base), (0, 0, 0, 0))
         draw_cruo = ImageDraw.Draw(img_texto_crua)
         draw_cruo.text((-bbox[0], -bbox[1]), texto, fill=cor_texto, font=font)
         
-        # Passo B: Expansão geométrica baseada na largura alvo (90% do slider)
-        largura_alvo = int(tamanho_saida * 0.90)
-        proporcao_escala = largura_alvo / w_texto
+        # Calcula a escala diretamente para o tamanho gigante (alta nitidez)
+        largura_alvo_hd = int(tamanho_canvas_hd * 0.85)
+        proporcao_escala = largura_alvo_hd / w_texto_base
         
-        novo_w_texto = int(w_texto * proporcao_escala)
-        novo_h_texto = int(h_texto * proporcao_escala)
+        novo_w_hd = int(w_texto_base * proporcao_escala)
+        novo_h_hd = int(h_texto_base * proporcao_escala)
         
-        # Se a altura esticada ultrapassar o limite vertical do slider, calibra pela altura
-        if novo_h_texto > int(tamanho_saida * 0.90):
-            altura_alvo = int(tamanho_saida * 0.90)
-            proporcao_escala = altura_alvo / h_texto
-            novo_w_texto = int(w_texto * proporcao_escala)
-            novo_h_texto = int(h_texto * proporcao_escala)
+        if novo_h_hd > int(tamanho_canvas_hd * 0.85):
+            altura_alvo_hd = int(tamanho_canvas_hd * 0.85)
+            proporcao_escala = altura_alvo_hd / h_texto_base
+            novo_w_hd = int(w_texto_base * proporcao_escala)
+            novo_h_hd = int(h_texto_base * proporcao_escala)
             
-        img_texto_gigante = img_texto_crua.resize((novo_w_texto, novo_h_texto), Image.Resampling.LANCZOS)
+        # O segredo da nitidez: o resize LANCZOS reconstrói as bordas suavizando os pixels quebrados
+        img_texto_hd = img_texto_crua.resize((novo_w_hd, novo_h_hd), Image.Resampling.LANCZOS)
         
-        # Passo C: Centraliza no canvas final do slider
+        # Monta o canvas intermediário em alta resolução
+        base_image_hd = Image.new("RGBA", (tamanho_canvas_hd, tamanho_canvas_hd), (0, 0, 0, 0))
+        ox_hd = (tamanho_canvas_hd - novo_w_hd) // 2
+        oy_hd = (tamanho_canvas_hd - novo_h_hd) // 2
+        base_image_hd.paste(img_texto_hd, (ox_hd, oy_hd), img_texto_hd)
+        
+        # Reduz de volta para o tamanho do slider aplicando o filtro de suavização final
         base_image = Image.new("RGBA", (tamanho_saida, tamanho_saida), bg_color)
-        ox = (tamanho_saida - novo_w_texto) // 2
-        oy = (tamanho_saida - novo_h_texto) // 2
-        base_image.paste(img_texto_gigante, (ox, oy), img_texto_gigante)
+        img_suave = base_image_hd.resize((tamanho_saida, tamanho_saida), Image.Resampling.LANCZOS)
+        base_image.paste(img_suave, (0, 0), img_suave)
 
 # --- MÓDULO 2: IMAGEM TRADICIONAL (PREENCHIMENTO TOTAL) ---
 else:
@@ -87,7 +91,6 @@ else:
             img_original = img_original.crop(bbox)
         
         largura_util, altura_util = img_original.size
-        # Calibrado para expandir até 90% da área total
         proporcao = min((tamanho_saida * 0.90) / largura_util, (tamanho_saida * 0.90) / altura_util)
         nova_l = int(largura_util * proporcao)
         nova_a = int(altura_util * proporcao)
@@ -104,7 +107,7 @@ if base_image is not None:
     st.subheader("Visualização Base:")
     st.image(base_image, width=tamanho_saida)
     
-    st.write("Renderizando frames em tamanho real...")
+    st.write("Renderizando frames com anti-aliasing...")
     
     largura_orig, altura_orig = base_image.size
     frames = []
@@ -134,7 +137,7 @@ if base_image is not None:
             
             frame_final = Image.new("RGBA", (largura_orig, altura_orig), bg_color)
             offset_x = (largura_orig - nova_largura) // 2
-            offset_y = (altura_orig - nova_altura) // 2
+            offset_y = (largura_orig - nova_altura) // 2
             frame_final.paste(img_redimensionada, (offset_x, offset_y), img_redimensionada)
             frame_atual = frame_final
             
@@ -162,7 +165,7 @@ if base_image is not None:
     st.subheader("GIF Final Gerado:")
     st.image(gif_bytes, width=tamanho_saida)
     
-    nome_arquivo = "texto_maximo.gif" if tipo_entrada == "Texto Personalizado" else "imagem_maxima.gif"
+    nome_arquivo = "texto_hd.gif" if tipo_entrada == "Texto Personalizado" else "imagem_hd.gif"
     st.download_button(
         label=f"📥 Baixar GIF em {tamanho_saida}x{tamanho_saida}px",
         data=gif_bytes,
