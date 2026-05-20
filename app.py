@@ -2,12 +2,13 @@ import streamlit as st
 from PIL import Image, ImageEnhance, ImageDraw, ImageFont
 import io
 import math
+import os
 
 # 1. Configuração da página web
 st.set_page_config(page_title="Gerador de GIFs Pro", page_icon="🎨", layout="centered")
 
-st.title("Gerador de GIFs - Alta Definição")
-st.write("Suba uma imagem ou digite um texto. O conteúdo agora possui renderização nítida anti-aliasing.")
+st.title("Gerador de GIFs - Alta Definição Real")
+st.write("O conteúdo agora utiliza fontes vetoriais nativas do servidor para máxima nitidez.")
 
 # 2. Configurações de Interface
 tipo_entrada = st.radio("O que você deseja animar?", ["Texto Personalizado", "Enviar uma Imagem"])
@@ -29,56 +30,65 @@ cor_fundo = st.color_picker("Escolha a cor do fundo:", "#1E1C18")
 base_image = None
 bg_color = (0, 0, 0, 0) if tipo_fundo == "Totalmente Transparente" else cor_fundo
 
-# --- MÓDULO 1: TEXTO PERSONALIZADO (SUPERSAMPLING EM ALTA DEFINIÇÃO) ---
+# --- MÓDULO 1: TEXTO PERSONALIZADO (CÁLCULO VETORIAL EM ALTA DEFINIÇÃO) ---
 if tipo_entrada == "Texto Personalizado":
     texto = st.text_input("Digite a palavra ou frase:", value="Python")
     cor_texto = st.color_picker("Escolha a cor do texto:", "#FF4B4B")
     
     if texto:
-        # Fator de superamostragem para renderizar o texto de forma nítida antes de aplicar efeitos
-        fator_hd = 4
-        tamanho_canvas_hd = tamanho_saida * fator_hd
+        # Busca caminhos de fontes TrueType nativas que SEMPRE existem no Linux do Streamlit Cloud
+        caminhos_fontes = [
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "C:\\Windows\\Fonts\\arialbd.ttf" # Backup para teste local no Windows
+        ]
         
-        font = ImageFont.load_default()
+        font_path = None
+        for caminho in caminhos_fontes:
+            if os.path.exists(caminho):
+                font_path = caminho
+                break
         
-        # Cria uma imagem temporária para medir o tamanho da fonte padrão
-        canvas_medida = Image.new("RGBA", (1000, 1000), (0, 0, 0, 0))
-        draw_medida = ImageDraw.Draw(canvas_medida)
-        bbox = draw_medida.textbbox((0, 0), texto, font=font)
-        w_texto_base = max(bbox[2] - bbox[0], 1)
-        h_texto_base = max(bbox[3] - bbox[1], 1)
+        # Cria um canvas temporário grande para testar o tamanho real da fonte
+        canvas_teste = Image.new("RGBA", (2000, 2000), (0, 0, 0, 0))
+        draw_teste = ImageDraw.Draw(canvas_teste)
         
-        # Desenha o texto base de forma limpa
-        img_texto_crua = Image.new("RGBA", (w_texto_base, h_texto_base), (0, 0, 0, 0))
-        draw_cruo = ImageDraw.Draw(img_texto_crua)
-        draw_cruo.text((-bbox[0], -bbox[1]), texto, fill=cor_texto, font=font)
+        # Define o tamanho ideal baseado no Slider (deixando margem de segurança de 10% nas laterais)
+        largura_alvo = int(tamanho_saida * 0.90)
+        altura_alvo = int(tamanho_saida * 0.90)
         
-        # Calcula a escala diretamente para o tamanho gigante (alta nitidez)
-        largura_alvo_hd = int(tamanho_canvas_hd * 0.85)
-        proporcao_escala = largura_alvo_hd / w_texto_base
+        tamanho_fonte = 20
         
-        novo_w_hd = int(w_texto_base * proporcao_escala)
-        novo_h_hd = int(h_texto_base * proporcao_escala)
-        
-        if novo_h_hd > int(tamanho_canvas_hd * 0.85):
-            altura_alvo_hd = int(tamanho_canvas_hd * 0.85)
-            proporcao_escala = altura_alvo_hd / h_texto_base
-            novo_w_hd = int(w_texto_base * proporcao_escala)
-            novo_h_hd = int(h_texto_base * proporcao_escala)
-            
-        # O segredo da nitidez: o resize LANCZOS reconstrói as bordas suavizando os pixels quebrados
-        img_texto_hd = img_texto_crua.resize((novo_w_hd, novo_h_hd), Image.Resampling.LANCZOS)
-        
-        # Monta o canvas intermediário em alta resolução
-        base_image_hd = Image.new("RGBA", (tamanho_canvas_hd, tamanho_canvas_hd), (0, 0, 0, 0))
-        ox_hd = (tamanho_canvas_hd - novo_w_hd) // 2
-        oy_hd = (tamanho_canvas_hd - novo_h_hd) // 2
-        base_image_hd.paste(img_texto_hd, (ox_hd, oy_hd), img_texto_hd)
-        
-        # Reduz de volta para o tamanho do slider aplicando o filtro de suavização final
+        if font_path:
+            # Loop dinâmico que aumenta o tamanho real da fonte vetorial até preencher o espaço
+            while True:
+                font_teste = ImageFont.truetype(font_path, tamanho_fonte)
+                bbox = draw_teste.textbbox((0, 0), texto, font=font_teste)
+                w = bbox[2] - bbox[0]
+                h = bbox[3] - bbox[1]
+                
+                if w >= largura_alvo or h >= altura_alvo or tamanho_fonte > 500:
+                    break
+                tamanho_fonte += 2
+            font = ImageFont.truetype(font_path, tamanho_fonte - 2)
+        else:
+            # Caso extremo de falha, usa a padrão (mas o Linux do Streamlit sempre tem as de cima)
+            font = ImageFont.load_default()
+
+        # Recalcula a caixa exata com a fonte final já gigante
         base_image = Image.new("RGBA", (tamanho_saida, tamanho_saida), bg_color)
-        img_suave = base_image_hd.resize((tamanho_saida, tamanho_saida), Image.Resampling.LANCZOS)
-        base_image.paste(img_suave, (0, 0), img_suave)
+        draw_final = ImageDraw.Draw(base_image)
+        
+        bbox = draw_final.textbbox((0, 0), texto, font=font)
+        w_final = bbox[2] - bbox[0]
+        h_final = bbox[3] - bbox[1]
+        
+        # Centralização exata do texto de alta definição
+        x = (tamanho_saida - w_final) // 2
+        y = (tamanho_saida - h_final) // 2
+        
+        draw_final.text((x, y), texto, fill=cor_texto, font=font)
 
 # --- MÓDULO 2: IMAGEM TRADICIONAL (PREENCHIMENTO TOTAL) ---
 else:
@@ -137,7 +147,7 @@ if base_image is not None:
             
             frame_final = Image.new("RGBA", (largura_orig, altura_orig), bg_color)
             offset_x = (largura_orig - nova_largura) // 2
-            offset_y = (largura_orig - nova_altura) // 2
+            offset_y = (altura_orig - nova_altura) // 2
             frame_final.paste(img_redimensionada, (offset_x, offset_y), img_redimensionada)
             frame_atual = frame_final
             
@@ -165,7 +175,7 @@ if base_image is not None:
     st.subheader("GIF Final Gerado:")
     st.image(gif_bytes, width=tamanho_saida)
     
-    nome_arquivo = "texto_hd.gif" if tipo_entrada == "Texto Personalizado" else "imagem_hd.gif"
+    nome_arquivo = "texto_perfeito.gif" if tipo_entrada == "Texto Personalizado" else "imagem_perfeita.gif"
     st.download_button(
         label=f"📥 Baixar GIF em {tamanho_saida}x{tamanho_saida}px",
         data=gif_bytes,
