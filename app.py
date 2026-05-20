@@ -43,7 +43,7 @@ tipo_entrada = st.radio("Escolha o tipo de elemento:", ["Texto Personalizado", "
 
 base_image = None
 bg_color = (0, 0, 0, 0) if tipo_fundo == "Totalmente Transparente" else cor_fundo
-duracao_frame = int(1000 / velocidad_fps)
+duracao_frame = int(1000 / velocidade_fps) # Linha corrigida aqui!
 
 # --- MÓDULO 1: TEXTO PERSONALIZADO (VETORIAL DIRETO NATIVO) ---
 if tipo_entrada == "Texto Personalizado":
@@ -64,7 +64,7 @@ if tipo_entrada == "Texto Personalizado":
         for f_size in range(24, 400, 4):
             font_teste = None
             
-            # Passo 1: Tenta buscar fontes nativas comuns do Linux/Windows para evitar dependência de internet
+            # Passo 1: Tenta buscar fontes nativas comuns do Linux/Windows
             for f_nome in ["Ubuntu-Bold.ttf", "DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf", "Arial.ttf", "Helvetica.ttf"]:
                 try:
                     font_teste = ImageFont.truetype(f_nome, f_size)
@@ -85,7 +85,7 @@ if tipo_entrada == "Texto Personalizado":
                     except TypeError:
                         font_teste = ImageFont.load_default()
             
-            # Medição com tratamento robusto para sistemas legados
+            # Medição com tratamento robusto
             try:
                 bbox = draw_temp.textbbox((0, 0), texto, font=font_teste, anchor="mm")
                 w = bbox[2] - bbox[0]
@@ -111,7 +111,7 @@ if tipo_entrada == "Texto Personalizado":
         centro_x = tamanho_saida // 2
         centro_y = tamanho_saida // 2
         
-        # Renderização usando o motor Middle-Middle (mm) livre de cortes
+        # Renderização estável livre de cortes
         try:
             draw_final.text((centro_x, centro_y), texto, fill=cor_texto, font=font_final, anchor="mm")
         except Exception:
@@ -154,3 +154,92 @@ if base_image is not None:
     for i in range(num_frames):
         progresso = i / num_frames
         angulo_rad = progresso * 2 * math.pi
+        
+        elemento_frame = base_image.copy()
+        
+        # --- FILTRO 1: RAINBOW ---
+        if ativar_rainbow and tipo_entrada == "Texto Personalizado":
+            r = int(math.sin(progresso * 2 * math.pi + 0) * 127 + 128)
+            g = int(math.sin(progresso * 2 * math.pi + 2) * 127 + 128)
+            b = int(math.sin(progresso * 2 * math.pi + 4) * 127 + 128)
+            
+            dados = elemento_frame.getdata()
+            novos_dados = [(r, g, b, item[3]) if item[3] > 0 else item for item in dados]
+            elemento_frame.putdata(novos_dados)
+
+        # --- APLICAÇÃO DOS MOVIMENTOS ---
+        frame_final = Image.new("RGBA", (largura_orig, altura_orig), (0, 0, 0, 0))
+        shift_x, shift_y = 0, 0
+        
+        if combo_efeito in ["Girar + Pulsar (Clássico)", "Tornado Cósmico (Girar + Pulsar + Piscar)"]:
+            angulo = - (progresso * 360)
+            elemento_frame = elemento_frame.rotate(angulo, resample=Image.BICUBIC)
+
+        if combo_efeito in ["Apenas Pulsar (Zoom Suave)", "Girar + Pulsar (Clássico)", "Tornado Cósmico (Girar + Pulsar + Piscar)"]:
+            fator_escala = 0.90 + (math.sin(angulo_rad) * 0.10)
+            nl = int(largura_orig * fator_escala)
+            na = int(altura_orig * fator_escala)
+            elemento_frame = elemento_frame.resize((nl, na), Image.Resampling.LANCZOS)
+            
+        elif combo_efeito == "Gelatina Elástica (Física de Borracha)":
+            fator_x = 1.0 + (math.sin(angulo_rad) * 0.12)
+            fator_y = 1.0 - (math.sin(angulo_rad) * 0.12)
+            nl = int(largura_orig * fator_x)
+            na = int(altura_orig * fator_y)
+            elemento_frame = elemento_frame.resize((nl, na), Image.Resampling.LANCZOS)
+
+        elif combo_efeito == "Quicar (Bounce)":
+            altura_pulo = int(abs(math.sin(angulo_rad)) * (tamanho_saida * 0.20))
+            shift_y = - altura_pulo
+
+        elif combo_efeito == "Tremor Estilo Meme (Glitch/Shake)":
+            shift_x = random.randint(-10, 10)
+            shift_y = random.randint(-10, 10)
+
+        nl, na = elemento_frame.size
+        ox = (largura_orig - nl) // 2 + shift_x
+        oy = (altura_orig - na) // 2 + shift_y
+        frame_final.paste(elemento_frame, (ox, oy), elemento_frame)
+
+        # --- FILTRO 2: BRILHO NEON ---
+        if ativar_neon:
+            brilho = frame_final.filter(ImageFilter.GaussianBlur(radius=10))
+            brilho_forte = Image.blend(brilho, frame_final, alpha=0.3)
+            canvas_neon = Image.new("RGBA", (largura_orig, altura_orig), (0, 0, 0, 0))
+            canvas_neon.paste(brilho_forte, (0, 0), brilho_forte)
+            canvas_neon.paste(frame_final, (0, 0), frame_final)
+            frame_final = canvas_neon
+
+        if combo_efeito in ["Tornado Cósmico (Girar + Pulsar + Piscar)"]:
+            fator_brilho = 1.1 + (math.sin(angulo_rad) * 0.4)
+            enhancer = ImageEnhance.Brightness(frame_final)
+            frame_final = enhancer.enhance(fator_brilho)
+
+        canvas_fundo = Image.new("RGBA", (largura_orig, altura_orig), bg_color)
+        canvas_fundo.paste(frame_final, (0, 0), frame_final)
+        frames.append(canvas_fundo)
+        
+    # Compila o GIF final de alta definição
+    gif_buffer = io.BytesIO()
+    frames[0].save(
+        gif_buffer,
+        format="GIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=duracao_frame,
+        loop=0,
+        disposal=2
+    )
+    gif_bytes = gif_buffer.getvalue()
+    
+    st.subheader("GIF Final Premium:")
+    st.image(gif_bytes, width=tamanho_saida)
+    
+    st.download_button(
+        label="📥 Baixar GIF Customizado",
+        data=gif_bytes,
+        file_name="animacao_premium.gif",
+        mime="image/gif"
+    )
+else:
+    st.info("💡 Digite um texto acima ou envie uma imagem para ver seu GIF rodar liso!")
