@@ -52,7 +52,7 @@ if tipo_entrada == "Texto Personalizado":
                 "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"
             ]
             for caminho in caminhos_linux:
-                if os.path.exists(caminia):
+                if os.path.exists(caminho):  # CORRIGIDO: variável alterada de caminia para caminho
                     font_path = caminho
                     break
 
