@@ -2,28 +2,12 @@ import streamlit as st
 from PIL import Image, ImageEnhance, ImageDraw, ImageFont
 import io
 import math
-import os
-import urllib.request
 
 # 1. Configuração da página web
 st.set_page_config(page_title="Gerador de GIFs Pro", page_icon="🎨", layout="centered")
 
-st.title("🎨 Gerador de GIFs - Resolução Máxima Otimizada")
-st.write("Suba uma imagem ou digite um texto. O conteúdo foi calibrado para ocupar o espaço máximo disponível.")
-
-# Garante que uma fonte robusta exista no servidor
-@st.cache_data
-def baixar_fonte_reserva():
-    caminho_local_fonte = "fonte_reserva.ttf"
-    if not os.path.exists(caminho_local_fonte):
-        url_fonte = "https://github.com/matomo-org/component-dejavu-sans/raw/master/DejaVuSans-Bold.ttf"
-        try:
-            urllib.request.urlretrieve(url_fonte, caminho_local_fonte)
-        except Exception:
-            return None
-    return caminho_local_fonte
-
-font_path_servidor = baixar_fonte_reserva()
+st.title("Definição Máxima Otimizada")
+st.write("Suba uma imagem ou digite um texto. O conteúdo foi forçado matematicamente a ocupar o tamanho máximo.")
 
 # 2. Configurações de Interface
 tipo_entrada = st.radio("O que você deseja animar?", ["Texto Personalizado", "Enviar uma Imagem"])
@@ -39,63 +23,60 @@ combo_efeito = st.selectbox(
 
 tamanho_saida = st.slider("Escolha o tamanho do GIF (Pixels de Largura/Altura):", min_value=200, max_value=800, value=600, step=50)
 
-tipo_fundo = st.selectbox("Estilo do Fundo do GIF:", ["Totalmente Transparente", "Cor Sólida (Escolha abaixo)"])
-cor_fundo = st.color_picker("Escolha a cor do fundo (Se selecionou Cor Sólida):", "#1E1C18")
+tipo_fundo = st.selectbox("Estilo do Fundo do GIF:", ["Cor Sólida (Escolha abaixo)", "Totalmente Transparente"])
+cor_fundo = st.color_picker("Escolha a cor do fundo:", "#1E1C18")
 
 base_image = None
 bg_color = (0, 0, 0, 0) if tipo_fundo == "Totalmente Transparente" else cor_fundo
 
-# --- MÓDULO 1: TEXTO PERSONALIZADO (MÁXIMO PREENCHIMENTO) ---
+# --- MÓDULO 1: TEXTO PERSONALIZADO (PROJEÇÃO VETORIAL DA ESCALA) ---
 if tipo_entrada == "Texto Personalizado":
     texto = st.text_input("Digite a palavra ou frase:", value="Python")
     cor_texto = st.color_picker("Escolha a cor do texto:", "#FF4B4B")
     
     if texto:
-        if font_path_servidor and os.path.exists(font_path_servidor):
-            font_path = font_path_servidor
-        elif os.name == 'nt':
-            caminho_windows = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts', 'arialbd.ttf')
-            font_path = caminho_windows if os.path.exists(caminho_windows) else None
-        else:
-            font_path = None
-
-        # Canvas inicial grande para o cálculo de bounding box
-        canvas_temp = Image.new("RGBA", (2000, 2000), (0,0,0,0))
-        draw_temp = ImageDraw.Draw(canvas_temp)
+        # Passo A: Cria o texto em alta definição nativa da biblioteca
+        font = ImageFont.load_default()
         
-        tamanho_fonte = 20
-        # Força o texto a ocupar quase 95% da largura total selecionada
-        largura_alvo = int(tamanho_saida * 0.95)
+        # Cria uma imagem temporária para medir o tamanho real em pixels do texto base
+        canvas_medida = Image.new("RGBA", (1000, 2000), (0,0,0,0))
+        draw_medida = ImageDraw.Draw(canvas_medida)
+        bbox = draw_medida.textbbox((0, 0), texto, font=font)
+        w_texto = bbox[2] - bbox[0]
+        h_texto = bbox[3] - bbox[1]
         
-        if font_path:
-            while True:
-                font_teste = ImageFont.truetype(font_path, tamanho_fonte)
-                bbox = draw_temp.textbbox((0, 0), texto, font=font_teste)
-                w = bbox[2] - bbox[0]
-                if w >= largura_alvo or tamanho_fonte > 500:
-                    break
-                tamanho_fonte += 4
-            font = ImageFont.truetype(font_path, tamanho_fonte)
-        else:
-            font = ImageFont.load_default()
-
-        # Recalcula a caixa exata com a fonte final
-        bbox = draw_temp.textbbox((0, 0), texto, font=font)
-        w = bbox[2] - bbox[0]
-        h = bbox[3] - bbox[1]
+        # Garante tamanho mínimo para evitar divisões por zero
+        w_texto = max(w_texto, 1)
+        h_texto = max(h_texto, 1)
         
-        # Cria imagem justa ao redor do texto
-        img_texto_justa = Image.new("RGBA", (w + 20, h + 20), (0,0,0,0))
-        draw_justo = ImageDraw.Draw(img_texto_justa)
-        draw_justo.text((-bbox[0] + 10, -bbox[1] + 10), texto, fill=cor_texto, font=font)
+        # Desenha o texto bem justo
+        img_texto_crua = Image.new("RGBA", (w_texto, h_texto), (0,0,0,0))
+        draw_cruo = ImageDraw.Draw(img_texto_crua)
+        draw_cruo.text((-bbox[0], -bbox[1]), texto, fill=cor_texto, font=font)
         
-        # Centraliza a imagem justa dentro do canvas final de saída do slider
+        # Passo B: Expansão geométrica baseada na largura alvo (90% do slider)
+        largura_alvo = int(tamanho_saida * 0.90)
+        proporcao_escala = largura_alvo / w_texto
+        
+        novo_w_texto = int(w_texto * proporcao_escala)
+        novo_h_texto = int(h_texto * proporcao_escala)
+        
+        # Se a altura esticada ultrapassar o limite vertical do slider, calibra pela altura
+        if novo_h_texto > int(tamanho_saida * 0.90):
+            altura_alvo = int(tamanho_saida * 0.90)
+            proporcao_escala = altura_alvo / h_texto
+            novo_w_texto = int(w_texto * proporcao_escala)
+            novo_h_texto = int(h_texto * proporcao_escala)
+            
+        img_texto_gigante = img_texto_crua.resize((novo_w_texto, novo_h_texto), Image.Resampling.LANCZOS)
+        
+        # Passo C: Centraliza no canvas final do slider
         base_image = Image.new("RGBA", (tamanho_saida, tamanho_saida), bg_color)
-        ox = (tamanho_saida - (w + 20)) // 2
-        oy = (tamanho_saida - (h + 20)) // 2
-        base_image.paste(img_texto_justa, (ox, oy), img_texto_justa)
+        ox = (tamanho_saida - novo_w_texto) // 2
+        oy = (tamanho_saida - novo_h_texto) // 2
+        base_image.paste(img_texto_gigante, (ox, oy), img_texto_gigante)
 
-# --- MÓDULO 2: IMAGEM TRADICIONAL (MÁXIMO PREENCHIMENTO) ---
+# --- MÓDULO 2: IMAGEM TRADICIONAL (PREENCHIMENTO TOTAL) ---
 else:
     uploaded_file = st.file_uploader("Suba qualquer tipo de imagem...", type=["png", "jpg", "jpeg", "webp", "bmp", "tiff"])
     if uploaded_file is not None:
@@ -106,8 +87,8 @@ else:
             img_original = img_original.crop(bbox)
         
         largura_util, altura_util = img_original.size
-        # Calibrado para expandir até 92% da área total para não sumir nas bordas
-        proporcao = min((tamanho_saida * 0.92) / largura_util, (tamanho_saida * 0.92) / altura_util)
+        # Calibrado para expandir até 90% da área total
+        proporcao = min((tamanho_saida * 0.90) / largura_util, (tamanho_saida * 0.90) / altura_util)
         nova_l = int(largura_util * proporcao)
         nova_a = int(altura_util * proporcao)
         
@@ -145,8 +126,7 @@ if base_image is not None:
             
         # --- EFEITO 2: PULSAÇÃO / ESCALA CALIBRADA ---
         if combo_efeito in ["Girar + Pulsar (Zoom) [Recomendado]", "Pulsar + Piscar Forte (Escala + Brilho)", "Tornado Cósmico (Girar + Pulsar + Piscar)"]:
-            # Reduzimos a perda do zoom (agora oscila de 90% a 105% do tamanho máximo, explodindo na tela)
-            fator_escala = 0.93 + (math.sin(progresso * 2 * math.pi) * 0.12)
+            fator_escala = 0.90 + (math.sin(progresso * 2 * math.pi) * 0.10)
             nova_largura = int(largura_orig * fator_escala)
             nova_altura = int(altura_orig * fator_escala)
             
@@ -180,7 +160,6 @@ if base_image is not None:
     gif_bytes = gif_buffer.getvalue()
     
     st.subheader("GIF Final Gerado:")
-    # Força a tag HTML a renderizar no tamanho real do slider sem limitação do Streamlit
     st.image(gif_bytes, width=tamanho_saida)
     
     nome_arquivo = "texto_maximo.gif" if tipo_entrada == "Texto Personalizado" else "imagem_maxima.gif"
