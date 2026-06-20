@@ -79,7 +79,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🎨 Gerador de GIFs Ultra Premium")
-st.markdown("**Versão 3.2 — Edição Lotes e Única** | Previsão de Imagem, Flicker Dinâmico, Rotação e mais.")
+st.markdown("**Versão 3.4 — Engine Absoluta de Textos** | Renderização multi-linhas matemática")
 
 # ============================================================================
 # 2. BARRA LATERAL - CONFIGURAÇÕES GLOBAIS
@@ -232,7 +232,7 @@ PALETAS = {
 }
 
 # ============================================================================
-# 6. ENTRADA DE CONTEÚDO (MODIFICADO COM AS NOVAS OPÇÕES)
+# 6. ENTRADA DE CONTEÚDO 
 # ============================================================================
 st.header("🎮 Conteúdo para Animar")
 
@@ -254,7 +254,7 @@ else:
 duracao_frame = int(1000 / velocidade_fps)
 
 # ============================================================================
-# 7. FUNÇÕES AUXILIARES
+# 7. FUNÇÕES AUXILIARES MATRICIAIS
 # ============================================================================
 def hex_para_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
@@ -477,13 +477,19 @@ def aplicar_shockwave(frame, progresso):
                     resultado[y, x] = arr[ny, nx]
     return Image.fromarray(resultado.astype(np.uint8), mode=frame.mode)
 
+
 # ============================================================================
-# 9. GESTÃO DE DADOS (MODIFICADO)
+# 9. GESTÃO DE DADOS COM TEXTO MATEMÁTICO ABSOLUTO
 # ============================================================================
 itens_para_processar = []
 
 if tipo_entrada == "✍️ Texto Personalizado":
-    texto = st.text_input("Digite o texto:", value="PYTHON")
+    # Uso do st.text_area permite que você use o ENTER livremente
+    texto_input = st.text_area("Digite a frase (Use Enter se quiser pular linha):", value="SUPER\nOFERTA")
+    
+    # OPÇÃO DE DESTRUIÇÃO DE ESPAÇOS: Transforma frases horizontais em verticais automaticamente
+    empilhar_palavras = st.checkbox("↕️ Empilhar Palavras (Força a quebra de linha em cada espaço)", value=True)
+    
     cor_texto = st.color_picker("Cor base do texto:", "#00FF88")
     ativar_outline = st.checkbox("🔲 Adicionar Contorno no Texto")
 
@@ -491,14 +497,28 @@ if tipo_entrada == "✍️ Texto Personalizado":
         cor_outline = st.color_picker("Cor do Contorno:", "#000000")
         espessura_outline = st.slider("Espessura do Contorno:", 1, 10, 3)
 
-    if texto:
+    if texto_input:
+        # PREPARAÇÃO MATRICIAL: Converte a string baseada na sua escolha
+        if empilhar_palavras:
+            texto_final = texto_input.replace(" ", "\n")
+        else:
+            texto_final = texto_input
+            
+        # Filtra linhas vazias geradas por excesso de espaços ou enters duplos
+        linhas = [linha for linha in texto_final.split('\n') if linha.strip()]
+        if not linhas:
+            linhas = ["Vazio"]
+
         largura_alvo = int(tamanho_saida * 0.82)
         altura_alvo = int(tamanho_saida * 0.82)
+        
+        # Objeto temporário apenas para medir
         img_temp = Image.new("RGBA", (10, 10))
         draw_temp = ImageDraw.Draw(img_temp)
         font_final = None
         tamanho_fonte = 24
 
+        # ENGINE DE DESCOBERTA DE ESCALA: Calcula a maior fonte que comporta TODAS as linhas juntas
         for f_size in range(24, 500, 4):
             font_teste = None
             for f_nome in ["Ubuntu-Bold.ttf", "DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf", "Arial.ttf", "Helvetica.ttf"]:
@@ -516,40 +536,76 @@ if tipo_entrada == "✍️ Texto Personalizado":
                     try: font_teste = ImageFont.load_default(size=f_size)
                     except TypeError: font_teste = ImageFont.load_default()
 
-            try:
-                bbox = draw_temp.textbbox((0, 0), texto, font=font_teste, anchor="mm")
-                w = bbox[2] - bbox[0]
-                h = bbox[3] - bbox[1]
-            except Exception:
-                bbox = draw_temp.textbbox((0, 0), texto, font=font_teste)
-                w = bbox[2] - bbox[0]
-                h = bbox[3] - bbox[1]
+            max_w = 0
+            total_h = 0
+            espacamento = f_size * 0.15  # Gap de 15% entre as linhas empilhadas
 
-            if w > largura_alvo or h > altura_alvo:
+            for linha in linhas:
+                try:
+                    bbox = draw_temp.textbbox((0, 0), linha, font=font_teste)
+                    lw = bbox[2] - bbox[0]
+                    lh = bbox[3] - bbox[1]
+                except Exception:
+                    lw, lh = font_teste.getsize(linha)
+                
+                if lw > max_w: max_w = lw
+                total_h += lh + espacamento
+
+            total_h -= espacamento # Tira o espaço extra da última linha
+
+            # Se a altura total da pilha de blocos estourar o canvas, encerra a subida de tamanho
+            if max_w > largura_alvo or total_h > altura_alvo:
                 break
+                
             font_final = font_teste
             tamanho_fonte = f_size
 
         if font_final is None:
             font_final = ImageFont.load_default()
 
+        # RENDERIZAÇÃO MATEMÁTICA LINHA POR LINHA
         base_image = Image.new("RGBA", (tamanho_saida, tamanho_saida), (0, 0, 0, 0))
         draw_final = ImageDraw.Draw(base_image)
-        centro_x, centro_y = tamanho_saida // 2, tamanho_saida // 2
 
-        if ativar_outline:
-            for offset_x in range(-espessura_outline, espessura_outline + 1):
-                for offset_y in range(-espessura_outline, espessura_outline + 1):
-                    if offset_x != 0 or offset_y != 0:
-                        try: draw_final.text((centro_x + offset_x, centro_y + offset_y), texto, fill=cor_outline, font=font_final, anchor="mm")
-                        except: pass
-        try: draw_final.text((centro_x, centro_y), texto, fill=cor_texto, font=font_final, anchor="mm")
-        except Exception:
-            bbox = draw_final.textbbox((0, 0), texto, font=font_final)
-            w = bbox[2] - bbox[0]
-            h = bbox[3] - bbox[1]
-            ox, oy = (tamanho_saida - w) // 2, (tamanho_saida - h) // 2
-            draw_final.text((ox, oy), texto, fill=cor_texto, font=font_final)
+        total_h = 0
+        alturas_linhas = []
+        espacamento = tamanho_fonte * 0.15
+
+        # Mede a altura exata do corpo da fonte final
+        for linha in linhas:
+            try:
+                bbox = draw_final.textbbox((0, 0), linha, font=font_final)
+                lh = bbox[3] - bbox[1]
+            except Exception:
+                _, lh = font_final.getsize(linha)
+            alturas_linhas.append(lh)
+            total_h += lh + espacamento
+            
+        total_h -= espacamento
+        
+        # Estabelece a origem Y (Topo do Bloco) para que fique no centro matemático do Canvas
+        y_atual = (tamanho_saida - total_h) / 2
+
+        # Pinta cada palavra individualmente recalculando o X
+        for i, linha in enumerate(linhas):
+            try:
+                bbox = draw_final.textbbox((0, 0), linha, font=font_final)
+                lw = bbox[2] - bbox[0]
+            except Exception:
+                lw, _ = font_final.getsize(linha)
+            
+            # Centraliza o X perfeitamente para ESTA palavra
+            x_atual = (tamanho_saida - lw) / 2
+
+            if ativar_outline:
+                for offset_x in range(-espessura_outline, espessura_outline + 1):
+                    for offset_y in range(-espessura_outline, espessura_outline + 1):
+                        if offset_x != 0 or offset_y != 0:
+                            draw_final.text((x_atual + offset_x, y_atual + offset_y), linha, fill=cor_outline, font=font_final)
+            
+            draw_final.text((x_atual, y_atual), linha, fill=cor_texto, font=font_final)
+            
+            y_atual += alturas_linhas[i] + espacamento
             
         itens_para_processar.append({"nome": "texto_animado.gif", "imagem": base_image})
 
@@ -561,7 +617,6 @@ elif tipo_entrada == "🖼️ Imagem Única (Com Prévia)":
     )
 
     if uploaded_file is not None:
-        # Previsão exclusiva para modo de 1 imagem
         st.image(uploaded_file, caption="Pré-visualização da Imagem Base", width=250)
 
         img_original = Image.open(uploaded_file).convert("RGBA")
@@ -977,7 +1032,7 @@ if itens_para_processar:
         gifs_processados[nome_arquivo] = gif_buffer.getvalue()
 
     # ========================================================================
-    # 12. EXIBIÇÃO E DOWNLOAD (LOTE)
+    # 12. EXIBIÇÃO E DOWNLOAD
     # ========================================================================
     st.success("✅ Processamento concluído com sucesso!")
     
@@ -1005,7 +1060,6 @@ if itens_para_processar:
             with cols[i % 3]:
                 st.image(gif_bytes, caption=nome, use_container_width=True)
                 
-        # Empacotamento em ZIP
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for nome, gif_bytes in gifs_processados.items():
@@ -1020,17 +1074,6 @@ if itens_para_processar:
             use_container_width=True
         )
 
-    with st.expander("💡 Dicas Profissionais"):
-        st.markdown("""
-        **Combos recomendados para os novos efeitos:**
-        - **Cyberpunk Completo**: Paleta Cyberpunk + Glow Pulsante + Chromatic Flicker + Hologram + Scanlines
-        - **Terror/Horror**: Blood Moon + Flicker + Glitch Digital + Vinheta + Tremor Caótico
-        - **Sci-Fi**: Fundo Estelar + Hologram + Lightning + Poeira Cósmica + Flutuação 3D
-        - **Rave/Festival**: Acid Green + Arco-íris + Partículas + Chromatic Flicker + Shockwave
-        - **Glitch Art**: Glitch Digital + Chromatic Flicker + Aberração Cromática + Vibração Elétrica
-        - **Cinematic**: Vinheta + Flicker + Sombra Dinâmica + Balanço de Pêndulo
-        """)
-
 else:
     st.info("💡 Escolha uma opção e envie seu conteúdo acima para começar!")
 
@@ -1040,7 +1083,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #888;'>
-    <p>🎨 <b>Gerador de GIFs Ultra Premium</b> | <span style="color:#00ff88">Versão 3.2 — Modos Single & Batch</span></p>
+    <p>🎨 <b>Gerador de GIFs Ultra Premium</b> | <span style="color:#00ff88">Versão 3.4 — Engine Absoluta de Textos</span></p>
     <p>Processamento Inteligente • Previsão Integrada • Preservação Strict-Alpha RGBA</p>
 </div>
 """, unsafe_allow_html=True)
